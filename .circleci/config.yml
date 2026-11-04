@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: None
+#
+# SPDX-License-Identifier: CC0-1.0
+
+version: 2.1
+
+latest: &latest
+  pattern: "^1.20.*-erlang-29.*$"
+
+# Test across Elixir versions
+tags: &tags
+  [
+    1.20.5-erlang-29.1.2-alpine-3.24.3,
+    1.17.3-erlang-27.3.4.16-alpine-3.24.1
+  ]
+
+jobs:
+  check-license:
+    docker:
+      - image: fsfe/reuse:latest
+    steps:
+      - checkout
+      - run: reuse lint
+
+  build-test:
+    parameters:
+      tag:
+        type: string
+    docker:
+      - image: hexpm/elixir:<< parameters.tag >>
+    working_directory: ~/repo
+    environment:
+      LC_ALL: C.UTF-8
+    steps:
+      - run:
+          name: Install system dependencies
+          command: apk add --no-cache build-base fwup git procps squashfs-tools util-linux xz zstd
+      - checkout
+      - run:
+          name: Install hex, rebar, and nerves_bootstrap
+          command: |
+            mix local.hex --force
+            mix local.rebar --force
+            mix archive.install hex nerves_bootstrap --force
+      - restore_cache:
+          keys:
+            - v1-mix-cache-<< parameters.tag >>-{{ checksum "mix.lock" }}
+      - run: mix deps.get
+      - when:
+          condition:
+            matches: { <<: *latest, value: << parameters.tag >> }
+          steps:
+            - run: mix format --check-formatted
+            - run: mix deps.unlock --check-unused
+            - run: mix test
+            - run: mix docs
+            - run: mix credo -a --strict
+            - run: mix dialyzer
+      - when:
+          condition:
+            not:
+              matches: { <<: *latest, value: << parameters.tag >> }
+          steps:
+            - run: mix test
+      - save_cache:
+          key: v1-mix-cache-<< parameters.tag >>-{{ checksum "mix.lock" }}
+          paths:
+            - _build
+            - deps
+
+workflows:
+  checks:
+    jobs:
+      - check-license:
+          filters:
+            tags:
+              only: /.*/
+      - build-test:
+          name: << matrix.tag >>
+          matrix:
+            parameters:
+              tag: *tags

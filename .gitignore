@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: None
+#
+# SPDX-License-Identifier: CC0-1.0
+/_build/
+/deps/
+/doc/
+/cover/
+/tmp/
+/erl_crash.dump
+/nerves_treeshake-*.tar
